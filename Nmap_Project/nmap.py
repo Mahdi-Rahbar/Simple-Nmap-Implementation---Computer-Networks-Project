@@ -8,6 +8,21 @@ import struct
 import socket
 import argparse
 
+COMMON_PORTS = {
+    80: "http",
+    443: "https",
+    21: "ftp",
+    22: "ssh",
+    23: "telnet",
+    25: "smtp",
+    53: "dns",
+    110: "pop3",
+    143: "imap",
+    194: "irc",
+    3306: "mysql",
+    8080: "http-proxy",
+}
+
 # ------------------------- Implementation of ICMP --------------------------------------------------
 
 # Definition of variables and error descriptions related to ICMP request and module functions
@@ -18,7 +33,7 @@ ERROR_DESCR = {
        'sent from processes running as root.',
     10013: ' - Note that ICMP messages can only be sent by'
            ' users or processes with administrator rights.'
-    }
+}
 __all__ = ['create_packet', 'do_one', 'verbose_ping', 'PingQuery',
            'multi_ping_query']
 
@@ -52,7 +67,6 @@ def calculate_checksum(data):
 
 # Create an ICMP echo request packet with a specified ID, including header, data, and checksum calculation
 def create_icmp_packet(packet_id):
-
     packet_header = struct.pack('bbHHh', ICMP_ECHO_REQUEST, 0, 0, packet_id, 1)
     packet_data = 192 * 'Q'
 
@@ -67,7 +81,6 @@ def create_icmp_packet(packet_id):
 # Send a single ICMP ping to the specified destination address
 # and return the delay in seconds or None on timeout or error
 def send_ping(destination_address, timeout_duration=1):
-
     try:
         icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, ICMP_CODE)
 
@@ -93,7 +106,6 @@ def send_ping(destination_address, timeout_duration=1):
     return response_delay
 
 
-
 # Receive an ICMP ping response from the specified socket and return the delay if matching ID is found
 def receive_ping(icmp_socket, packet_id, sent_time, timeout_duration):
     time_remaining = timeout_duration
@@ -117,23 +129,57 @@ def receive_ping(icmp_socket, packet_id, sent_time, timeout_duration):
         time_remaining -= receive_time - sent_time
         if time_remaining <= 0:
             return None
+
+
 # -----------------------------------------------------------------------------------------------------------------
 
+# Ping the host to check if it is online or offline.
 def check_host_status(host):
     delay = send_ping(host)
+
     if delay is not None:
         print(f"{host} is online")
+        return True
     else:
         print(f"{host} is offline")
+        return False
+
+
+# Parse port input, supporting both individual ports and ranges.
+def parse_ports(port_args):
+    ports = set()
+    for port_arg in port_args:
+        if '-' in port_arg:
+            start_port, end_port = map(int, port_arg.split('-'))
+            ports.update(range(start_port, end_port + 1))
+        else:
+            ports.add(int(port_arg))
+    return sorted(ports)
+
+
+# Scan specified ports on the host and display open ports and associated services.
+def scan_ports(host, ports):
+    for port in ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex((host, port))
+        if result == 0:
+            service_name = COMMON_PORTS.get(port, "unknown")
+            hostname = socket.getfqdn(host)
+            print(f"open port detected: {host} --port:{port} --service:{service_name} --hostname: {hostname}")
+        sock.close()
+
 
 def main():
-
-
-    parser = argparse.ArgumentParser(description="Ping a host to check if it's online or offline")
-    parser.add_argument("host", type=str, help="IP address or hostname of the host to ping")
+    parser = argparse.ArgumentParser(description="Ping a host and check open ports.")
+    parser.add_argument("host", type=str, help="IP address or hostname of the host to ping.")
+    parser.add_argument("ports", nargs="*", help="List of ports or ranges to scan, separated by space.")
     args = parser.parse_args()
-    
-    check_host_status(args.host)
+
+    if check_host_status(args.host):
+        ports_to_scan = parse_ports(args.ports) if args.ports else COMMON_PORTS.keys()
+        scan_ports(args.host, ports_to_scan)
+
 
 if __name__ == "__main__":
     main()
