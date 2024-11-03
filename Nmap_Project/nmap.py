@@ -157,28 +157,58 @@ def parse_ports(port_args):
     return sorted(ports)
 
 
-# Scan specified ports on the host and display open ports and associated services.
-def scan_ports(host, ports):
+# Scan a list of ports on the specified host, print open ports and associated services,
+# and calculate average response time for a specified number of requests.
+def scan_ports(host, ports, requests=1):
+
     for port in ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex((host, port))
-        if result == 0:
-            service_name = COMMON_PORTS.get(port, "unknown")
-            hostname = socket.getfqdn(host)
-            print(f"open port detected: {host} --port:{port} --service:{service_name} --hostname: {hostname}")
-        sock.close()
+
+        total_delay = 0
+        successful_responses = 0
+
+        for _ in range(requests):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            
+            start_time = time.perf_counter()
+            result = sock.connect_ex((host, port))
+            end_time = time.perf_counter()
+            sock.close()
+
+            if result == 0:
+                successful_responses += 1
+                delay = end_time - start_time
+                total_delay += delay
+                service_name = COMMON_PORTS.get(port, "unknown")
+                hostname = socket.getfqdn(host)
+                print(f"open port detected: {host}      --port: {port}       --service: {service_name}        --hostname: {hostname}")
+
+
+        if successful_responses > 0:
+            average_delay = (total_delay / successful_responses) * 1000
+            print(f"Average response time for port {port}: {average_delay:.2f} "
+                  f"ms over {successful_responses} successful responses.")
 
 
 def main():
+
+    print("\n")
+
+
     parser = argparse.ArgumentParser(description="Ping a host and check open ports.")
     parser.add_argument("host", type=str, help="IP address or hostname of the host to ping.")
     parser.add_argument("ports", nargs="*", help="List of ports or ranges to scan, separated by space.")
+    parser.add_argument("-r", "--requests", type=int, default=1,
+                        help="Number of requests to send per port for calculating average response time")
+
     args = parser.parse_args()
 
     if check_host_status(args.host):
         ports_to_scan = parse_ports(args.ports) if args.ports else COMMON_PORTS.keys()
-        scan_ports(args.host, ports_to_scan)
+        scan_ports(args.host, ports_to_scan, args.requests)
+
+
+    print("\n")
 
 
 if __name__ == "__main__":
