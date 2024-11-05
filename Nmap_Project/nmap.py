@@ -196,16 +196,29 @@ def main():
 
 
     parser = argparse.ArgumentParser(description="Ping a host and check open ports.")
-    parser.add_argument("host", type=str, help="IP address or hostname of the host to ping.")
+    parser.add_argument("host", type=str, nargs='?', help="IP address or hostname of the host to ping.")
     parser.add_argument("ports", nargs="*", help="List of ports or ranges to scan, separated by space.")
     parser.add_argument("-r", "--requests", type=int, default=1,
                         help="Number of requests to send per port for calculating average response time")
+    parser.add_argument("-rf", "--readfile", type=str, help="Input file containing list of hosts")
 
     args = parser.parse_args()
 
-    if check_host_status(args.host):
-        ports_to_scan = parse_ports(args.ports) if args.ports else COMMON_PORTS.keys()
-        scan_ports(args.host, ports_to_scan, args.requests)
+
+    if args.readfile:
+
+        with open(args.readfile, "r") as file:
+            hosts = [line.strip() for line in file if line.strip()]
+            for host in hosts:
+                if check_host_status(host):
+                    scan_ports(host, COMMON_PORTS.keys(), args.requests)
+                print("-" * 120)
+    else:
+
+        if args.host and check_host_status(args.host):
+            ports_to_scan = parse_ports(args.ports) if args.ports else COMMON_PORTS.keys()
+            scan_ports(args.host, ports_to_scan, args.requests)
+
 
 
     print("\n")
