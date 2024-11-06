@@ -52,7 +52,7 @@ def calculate_checksum(data):
         checksum &= 0xffffffff
 
     if length < len(data):
-        checksum += ord(data[len(data) - 1])
+        checksum += data[len(data) - 1]
         checksum &= 0xffffffff
 
     checksum = (checksum >> 16) + (checksum & 0xffff)
@@ -63,6 +63,7 @@ def calculate_checksum(data):
     final_checksum = (final_checksum >> 8) | ((final_checksum << 8) & 0xff00)
 
     return final_checksum
+
 
 
 # Create an ICMP echo request packet with a specified ID, including header, data, and checksum calculation
@@ -78,66 +79,77 @@ def create_icmp_packet(packet_id):
     return packet_header + packet_data.encode()
 
 
+
+
 # Send a single ICMP ping to the specified destination address
 # and return the delay in seconds or None on timeout or error
-def send_ping(destination_address, timeout_duration=1):
+def send_ping(destination_address, timeout_duration=1, ttl=30):
     try:
         icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, ICMP_CODE)
+        icmp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
+        icmp_socket.settimeout(timeout_duration)
 
-    except socket.error as error:
-        if error.errno in ERROR_DESCR:
-            raise socket.error(''.join((error.args[1], ERROR_DESCR[error.errno])))
+    except socket.error:
         raise
 
     try:
-        resolved_host = socket.gethostbyname(destination_address)
+        socket.gethostbyname(destination_address)
+
     except socket.gaierror:
-        return None
+        return None, None
+
 
     packet_id = int((id(timeout_duration) * random.random()) % 65535)
     packet = create_icmp_packet(packet_id)
 
-    while packet:
-        bytes_sent = icmp_socket.sendto(packet, (destination_address, 1))
-        packet = packet[bytes_sent:]
+    send_time = time.perf_counter()
+    icmp_socket.sendto(packet, (destination_address, 1))
 
-    response_delay = receive_ping(icmp_socket, packet_id, time.time(), timeout_duration)
+    response_delay, response_address = receive_ping(icmp_socket, send_time, timeout_duration)
+
     icmp_socket.close()
-    return response_delay
+
+    return (response_delay, response_address) if response_delay is not None else (None, None)
+
+
 
 
 # Receive an ICMP ping response from the specified socket and return the delay if matching ID is found
-def receive_ping(icmp_socket, packet_id, sent_time, timeout_duration):
+def receive_ping(icmp_socket, sent_time, timeout_duration):
     time_remaining = timeout_duration
 
     while True:
-        select_start_time = time.time()
+        select_start_time = time.perf_counter()
         ready = select.select([icmp_socket], [], [], time_remaining)
-        time_spent_in_select = time.time() - select_start_time
+        time_spent_in_select = time.perf_counter() - select_start_time
 
         if ready[0] == []:
-            return None
+            return None, None
 
-        receive_time = time.time()
+        receive_time = time.perf_counter()
         received_packet, address = icmp_socket.recvfrom(1024)
+
+
         icmp_header = received_packet[20:28]
         icmp_type, icmp_code, icmp_checksum, icmp_id, icmp_sequence = struct.unpack('bbHHh', icmp_header)
 
-        if icmp_id == packet_id:
-            return receive_time - sent_time
+        if icmp_type == 0 or icmp_type == 11:
 
-        time_remaining -= receive_time - sent_time
+            return (receive_time - sent_time) * 1000, address[0]
+
+
+        time_remaining -= time_spent_in_select
         if time_remaining <= 0:
-            return None
 
+            return None, None
 
 # -----------------------------------------------------------------------------------------------------------------
 
 # Ping the host to check if it is online or offline.
 def check_host_status(host):
-    delay = send_ping(host)
+    delay, response_address = send_ping(host)
 
-    if delay is not None:
+    if delay is not None and response_address is not None:
         print(f"{host} is online")
         return True
     else:
@@ -190,6 +202,41 @@ def scan_ports(host, ports, requests=1):
                   f"ms over {successful_responses} successful responses.")
 
 
+
+# Performs a traceroute to the specified host
+def traceroute(host, max_hops=30, timeout_duration=1):
+    print(f"Traceroute to {host} with max {max_hops} hops:\n")
+
+    try:
+        destination_ip = socket.gethostbyname(host)
+    except socket.gaierror:
+        print("Unable to resolve host.")
+        return
+
+    timeouts = 0
+
+    for ttl in range(1, max_hops + 1):
+        delay, address = send_ping(destination_ip, timeout_duration, ttl)
+
+        if address is None:
+            print(f"{ttl}\t*")
+            timeouts += 1
+
+            if timeouts == 7:
+                print("Host seems to be offline. Traceroute stopped.")
+                break
+
+
+        else:
+            timeouts = 0
+            print(f"{ttl}\t{address}\t{delay:.2f} ms")
+
+            if address == destination_ip:
+                print("Reached the destination!")
+                break
+
+
+
 def main():
 
     print("\n")
@@ -201,11 +248,17 @@ def main():
     parser.add_argument("-r", "--requests", type=int, default=1,
                         help="Number of requests to send per port for calculating average response time")
     parser.add_argument("-rf", "--readfile", type=str, help="Input file containing list of hosts")
+    parser.add_argument("-t", "--traceroute", action="store_true", help="Perform a traceroute to the specified host")
 
     args = parser.parse_args()
 
 
-    if args.readfile:
+
+
+    if args.traceroute and args.host:
+        traceroute(args.host)
+
+    elif args.readfile:
 
         with open(args.readfile, "r") as file:
             hosts = [line.strip() for line in file if line.strip()]
