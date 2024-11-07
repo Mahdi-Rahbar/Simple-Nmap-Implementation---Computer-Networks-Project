@@ -237,6 +237,61 @@ def traceroute(host, max_hops=30, timeout_duration=1):
 
 
 
+
+def send_get_request(user_id):
+    request = f"GET /{user_id} HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    return send_request(request)
+
+
+def send_post_request(name, age):
+    request = f"POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{name} {age}"
+    return send_request(request)
+
+
+def send_request(request):
+    host = 'localhost'
+    port = 8080
+
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect((host, port))
+    client_socket.sendall(request.encode())
+
+    response = client_socket.recv(1024).decode()
+    client_socket.close()
+    return response
+
+
+
+# Handles user interaction with the server.
+def server_interaction():
+
+    while True:
+        command = input("Enter 'GET user_id' or 'POST user_name user_age' to simulate a request: ")
+        parts = command.strip().split()
+
+        if len(parts) == 2 and parts[0].upper() == 'GET':
+            user_id = parts[1]
+            response = send_get_request(user_id)
+            print(response)
+
+        elif len(parts) == 3 and parts[0].upper() == 'POST':
+            user_name = parts[1]
+            try:
+                user_age = int(parts[2])
+                response = send_post_request(user_name, user_age)
+                print(response)
+            except ValueError:
+                print("Invalid age. Please enter an integer for age.")
+        else:
+            print("Invalid command. Please try again.")
+
+
+        if command.lower() in ['exit', 'quit']:
+            print("Exiting server interaction...")
+            break
+
+
+
 def main():
 
     print("\n")
@@ -249,11 +304,16 @@ def main():
                         help="Number of requests to send per port for calculating average response time")
     parser.add_argument("-rf", "--readfile", type=str, help="Input file containing list of hosts")
     parser.add_argument("-t", "--traceroute", action="store_true", help="Perform a traceroute to the specified host")
-
+    parser.add_argument("-s", "--server", action="store_true",
+                        help="Interact with server through GET/POST simulation")
     args = parser.parse_args()
 
 
 
+
+    if args.server:
+        server_interaction()
+        return
 
     if args.traceroute and args.host:
         traceroute(args.host)
@@ -271,7 +331,6 @@ def main():
         if args.host and check_host_status(args.host):
             ports_to_scan = parse_ports(args.ports) if args.ports else COMMON_PORTS.keys()
             scan_ports(args.host, ports_to_scan, args.requests)
-
 
 
     print("\n")
