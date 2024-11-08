@@ -8,6 +8,7 @@ import struct
 import socket
 import argparse
 
+
 COMMON_PORTS = {
     80: "http",
     443: "https",
@@ -237,17 +238,19 @@ def traceroute(host, max_hops=30, timeout_duration=1):
 
 
 
-
+# Constructs and sends a GET request for the specified user ID.
 def send_get_request(user_id):
     request = f"GET /{user_id} HTTP/1.1\r\nHost: localhost\r\n\r\n"
     return send_request(request)
 
 
+# Constructs and sends a POST request to add a new user with the specified name and age.
 def send_post_request(name, age):
     request = f"POST / HTTP/1.1\r\nHost: localhost\r\n\r\n{name} {age}"
     return send_request(request)
 
 
+# Sends a given HTTP request to the server and returns the response.
 def send_request(request):
     host = 'localhost'
     port = 8080

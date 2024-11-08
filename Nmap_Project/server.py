@@ -1,4 +1,5 @@
 import socket
+import threading
 
 # Sample user data
 users = {
@@ -22,7 +23,7 @@ def handle_get_request(request):
     return response
 
 def handle_post_request(request):
-    # Extract the body of the request
+
     body = request.split('\r\n\r\n', 1)[1]
     name_age = body.strip().split(' ')
     if len(name_age) >= 2:
@@ -34,28 +35,37 @@ def handle_post_request(request):
         response = "HTTP/1.1 400 Bad Request\n\nInvalid POST data"
     return response
 
+
+# Handles a single client connection by processing the request
+def handle_client(client_socket):
+    
+    request = client_socket.recv(1024).decode()
+
+    if "GET" in request:
+        response = handle_get_request(request)
+    elif "POST" in request:
+        response = handle_post_request(request)
+    else:
+        response = "HTTP/1.1 400 Bad Request\n\nInvalid request"
+
+    client_socket.sendall(response.encode())
+    client_socket.close()
+
+
 def main():
     host = 'localhost'
     port = 8080
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, port))
-    server_socket.listen(1)
+    server_socket.listen(4)
     print(f"Server is listening on http://{host}:{port}")
 
     while True:
         client_socket, client_address = server_socket.accept()
-        request = client_socket.recv(1024).decode()
-
-        if "GET" in request:
-            response = handle_get_request(request)
-        elif "POST" in request:
-            response = handle_post_request(request)
-        else:
-            response = "HTTP/1.1 400 Bad Request\n\nInvalid request"
-
-        client_socket.sendall(response.encode())
-        client_socket.close()
+        print(f"Connection established with {client_address}")
+        client_thread = threading.Thread(target=handle_client, args=(client_socket,))
+        client_thread.start()
 
 
 if __name__ == '__main__':
