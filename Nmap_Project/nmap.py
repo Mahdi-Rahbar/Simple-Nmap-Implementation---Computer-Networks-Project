@@ -21,7 +21,6 @@ COMMON_PORTS = {
     143: "imap",
     194: "irc",
     3306: "mysql",
-    8080: "http-proxy",
 }
 
 # ------------------------- Implementation of ICMP --------------------------------------------------
@@ -35,8 +34,7 @@ ERROR_DESCR = {
     10013: ' - Note that ICMP messages can only be sent by'
            ' users or processes with administrator rights.'
 }
-__all__ = ['create_packet', 'do_one', 'verbose_ping', 'PingQuery',
-           'multi_ping_query']
+__all__ = ['create_icmp_packet', 'send_ping', 'receive_ping']
 
 
 # Checksum calculation for a source string in binary form using One's Complement algorithm
@@ -192,7 +190,12 @@ def scan_ports(host, ports, requests=1):
                 successful_responses += 1
                 delay = end_time - start_time
                 total_delay += delay
-                service_name = COMMON_PORTS.get(port, "unknown")
+                try:
+                    service_name = socket.getservbyport(port)
+                except Exception:
+                    service_name = None
+
+
                 hostname = socket.getfqdn(host)
                 print(f"open port detected: {host}      --port: {port}       --service: {service_name}        --hostname: {hostname}")
 
@@ -310,7 +313,6 @@ def main():
     parser.add_argument("-s", "--server", action="store_true",
                         help="Interact with server through GET/POST simulation")
     args = parser.parse_args()
-
 
 
 
